@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/src/server.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["frontend/**"],
+        "maxLambdaSize": "50mb",
+        "maxDuration": 300
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/backend/src/server.ts" }
+  ]
+}

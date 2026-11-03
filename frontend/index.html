@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SimpleForms ↔ Binatel</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Оверлей с лоадером -->
+  <div id="loading-overlay" style="display:none">
+    <div class="spinner"></div>
+    <p class="spinner-text">Загрузка анкет…</p>
+  </div>
+
+  <header>
+    <h1>SimpleForms ↔ Binatel</h1>
+    <p class="subtitle">Сопоставление анкет с записями звонков</p>
+  </header>
+
+  <main>
+    <section class="controls">
+      <div class="control-row">
+        <div class="field">
+          <label>Проекты</label>
+          <div class="project-list" id="project-list"></div>
+        </div>
+        <button id="load-btn" class="btn btn-primary" disabled>Загрузить таблицу</button>
+      </div>
+
+      <div class="control-row filter-row" id="filter-row">
+        <div class="field">
+          <label for="status-filter">Статус</label>
+          <select id="status-filter">
+            <option value="">Все статусы</option>
+            <option value="targeted">Целевые</option>
+            <option value="nontargeted">Нецелевые</option>
+            <option value="incomplete">Незавершённые</option>
+            <option value="defect">Брак</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="audio-filter">Аудиозапись</label>
+          <select id="audio-filter">
+            <option value="">Все</option>
+            <option value="yes">Есть запись</option>
+            <option value="no">Нет записи</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sort-select">Сортировка</label>
+          <select id="sort-select">
+            <option value="">По умолчанию</option>
+            <option value="num-desc">№ анкеты (↓ новые)</option>
+            <option value="num-asc">№ анкеты (↑ старые)</option>
+            <option value="date-desc">Дата (↓ новые)</option>
+            <option value="date-asc">Дата (↑ старые)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="date-from">Дата с</label>
+          <input type="date" id="date-from" />
+        </div>
+        <div class="field">
+          <label for="date-to">Дата по</label>
+          <input type="date" id="date-to" />
+        </div>
+        <div class="field">
+          <label for="search-input">Поиск</label>
+          <input type="text" id="search-input" placeholder="Телефон, ID или № анкеты, ID звонка..." />
+        </div>
+      </div>
+
+      <div class="download-bar" id="download-bar" style="display:none">
+        <span class="download-label">Скачать данные проекта:</span>
+        <a id="download-csv-link" class="btn btn-download" href="#">⬇ CSV</a>
+        <a id="download-xlsx-link" class="btn btn-download" href="#">⬇ XLSX</a>
+        <a id="download-archive-link" class="btn btn-download" href="#">⬇ Архив записей</a>
+      </div>
+
+      <div class="archive-by-list" id="archive-by-list" style="display:none">
+        <label for="form-numbers-input">Архив записей по списку номеров анкет или ID звонков Binatel</label>
+        <textarea id="form-numbers-input" rows="3"
+          placeholder="Вставьте № анкет, ID анкет или ID звонков Binatel — через запятую, пробел или каждый с новой строки"></textarea>
+        <div class="archive-by-list-actions">
+          <label class="btn btn-download file-btn">
+            📄 Загрузить список из файла (XLSX/CSV)
+            <input type="file" id="form-list-file" accept=".xlsx,.xls,.csv" hidden />
+          </label>
+          <button type="button" id="archive-list-btn" class="btn btn-download" disabled>⬇ Скачать архив по списку</button>
+          <span id="archive-list-spinner" class="spinner-sm" style="display:none" aria-hidden="true"></span>
+          <span id="archive-list-status" class="archive-list-status"></span>
+        </div>
+      </div>
+
+      <div class="actions" id="actions" style="display:none">
+        <span id="record-count" class="count"></span>
+      </div>
+    </section>
+
+    <div id="status-bar" class="status-bar" style="display:none"></div>
+
+    <section class="table-wrap">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th>Проект</th>
+            <th>ID анкеты</th>
+            <th>№ анкеты</th>
+            <th>Телефон</th>
+            <th>Статус анкеты</th>
+            <th>Дата анкеты</th>
+            <th>ID звонка</th>
+            <th>Запись</th>
+            <th>Дата звонка</th>
+            <th>Оператор</th>
+            <th>Длит. (с)</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr>
+            <td colspan="11" class="empty-cell">Выберите проект и нажмите «Загрузить таблицу»</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Плеер записей -->
+  <div id="player-bar" class="player-bar" style="display:none">
+    <div class="player-info">
+      <span class="player-label">Запись:</span>
+      <span id="player-title"></span>
+    </div>
+    <audio id="player-audio" controls preload="none"></audio>
+    <div class="player-speed">
+      <button type="button" class="speed-btn" data-speed="1">1×</button>
+      <button type="button" class="speed-btn" data-speed="1.5">1.5×</button>
+      <button type="button" class="speed-btn" data-speed="2">2×</button>
+    </div>
+    <button type="button" id="player-close" class="player-close" title="Закрыть плеер">✕</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

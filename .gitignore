@@ -1,0 +1,5 @@
+.env*
+ENV_VARS_FROM_VERCEL.txt
+node_modules
+.vercel
+.DS_Store
