@@ -21,6 +21,7 @@ export interface IBinatelClient {
   getCalls(dateFrom?: string, dateTo?: string): Promise<BinatelCall[]>
   getCallsByPhone(phone: string): Promise<BinatelCall[]>
   downloadRecording(phone: string): Promise<Readable>
+  downloadRecordingByCallId(callId: string): Promise<Readable>
 }
 
 // ── Заглушка ──────────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ export class MockBinatelClient implements IBinatelClient {
   private mockCalls: BinatelCall[] = [
     {
       callId: 'mock-001',
+      generalCallId: '1',
       phone: '79001234567',
       recordingUrl: '',
       callDate: new Date().toISOString(),
@@ -37,6 +39,7 @@ export class MockBinatelClient implements IBinatelClient {
     },
     {
       callId: 'mock-002',
+      generalCallId: '2',
       phone: '79009876543',
       recordingUrl: '',
       callDate: new Date(Date.now() - 86400000).toISOString(),
@@ -58,6 +61,10 @@ export class MockBinatelClient implements IBinatelClient {
     const stream = new Readable({ read() {} })
     stream.push(null)
     return stream
+  }
+
+  async downloadRecordingByCallId(_callId: string): Promise<Readable> {
+    return this.downloadRecording('')
   }
 }
 
@@ -173,14 +180,32 @@ export class RealBinatelClient implements IBinatelClient {
     })
     return res.data as Readable
   }
+
+  /**
+   * Скачать аудиозапись конкретного звонка: GET /recording?callId=OKITOKI_342434.
+   * Точнее, чем по телефону: по телефону 7Line отдаёт запись самого свежего звонка.
+   */
+  async downloadRecordingByCallId(callId: string): Promise<Readable> {
+    const res = await this.http.get('/recording', {
+      params: { callId },
+      responseType: 'stream',
+    })
+    return res.data as Readable
+  }
 }
 
 // ── Типы ответа 7Line ─────────────────────────────────────────────────────────
 
 interface SevenLineCall {
   callId?: string | number
+  generalCallId?: string | number
   id?: string | number
   phone?: string
+  startTime?: string          // "2026-10-26 21:28:54" в часовом поясе timeZone
+  timeZone?: string
+  operatorName?: string
+  billsec?: string | number
+  talkDurationSec?: string | number
   call_type?: string       // "inbound" | "outbound"
   outboundPrefix?: string
   rawDialedNumber?: string
@@ -208,15 +233,30 @@ interface ByPhoneResponse {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function mapCall(c: SevenLineCall): BinatelCall {
+// "2026-10-26 21:28:54" (время в поясе звонка) -> ISO UTC. Пояс берём из конфига (по умолчанию +05:00).
+function parseCallStart(c: SevenLineCall): string {
+  const raw = String(c.startTime ?? '')
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/)
+  if (m) {
+    const d = new Date(`${m[1]}T${m[2]}${config.simpleforms.timezoneOffset}`)
+    if (Number.isFinite(d.getTime())) return d.toISOString()
+  }
+  return String(c.date ?? c.callDate ?? c.created_at ?? '')
+}
+
+export function mapCall(c: SevenLineCall): BinatelCall {
   const id = String(c.callId ?? c.id ?? '')
+  // generalCallId — числовой ID звонка в дозвонщике; он же приходит в SessionID анкеты.
+  // Если поля нет, берём числовой хвост callId (OKITOKI_342434 -> 342434).
+  const general = String(c.generalCallId ?? id.match(/(\d+)$/)?.[1] ?? '')
   return {
-    callId:       id,
-    phone:        String(c.phone ?? ''),
-    recordingUrl: `${SEVEN_LINE_BASE}/recording?callId=${id}`,
-    callDate:     String(c.date ?? c.callDate ?? c.created_at ?? ''),
-    operator:     String(c.operator ?? c.agent ?? c.agentName ?? ''),
-    duration:     Number(c.duration ?? 0),
+    callId:        id,
+    generalCallId: general,
+    phone:         String(c.phone ?? ''),
+    recordingUrl:  `${SEVEN_LINE_BASE}/recording?callId=${id}`,
+    callDate:      parseCallStart(c),
+    operator:      String(c.operatorName ?? c.operator ?? c.agent ?? c.agentName ?? ''),
+    duration:      Number(c.talkDurationSec ?? c.billsec ?? c.duration ?? 0),
   }
 }
 

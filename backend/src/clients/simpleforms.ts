@@ -198,7 +198,8 @@ function parseColumnarForms(
   const idxLink       = idx('Ссылка на заполнение')
 
   return rows.map(row => {
-    const rawPhone = extractPhone(row, idxPhone, idxId, idxLink)
+    const link = parseFillLink(idxLink >= 0 ? row[idxLink] : '')
+    const rawPhone = extractPhone(row, idxPhone, idxId, link)
     const rawDate  = row[idxDate] || row[idxDateStart] || ''
 
     return {
@@ -207,6 +208,7 @@ function parseColumnarForms(
       projectId,
       projectName,
       phone:       formatPhone(normalizePhone(rawPhone)),
+      sessionId:   link.sessionId ?? '',
       status:      mapStatus(row[idxTargeted], row[idxCheck]),
       createdAt:   parseRuDate(rawDate),
     }
@@ -236,13 +238,41 @@ function mapStatus(targeted: any, check: any): string {
   return 'unknown'
 }
 
+interface FillLink { tell?: string; id?: string; sessionId?: string }
+
+/**
+ * Разбор "Ссылки на заполнение": параметры Tell / ID / SessionID.
+ * Значение "test" и пустые значения считаются отсутствующими.
+ */
+export function parseFillLink(raw: any): FillLink {
+  if (!raw || typeof raw !== 'string') return {}
+  let sp: URLSearchParams
+  try {
+    sp = new URL(raw).searchParams
+  } catch {
+    const q = raw.split('?')[1]
+    if (!q) return {}
+    sp = new URLSearchParams(q)
+  }
+  const get = (name: string): string | undefined => {
+    for (const [k, v] of sp.entries()) if (k.toLowerCase() === name) return v
+    return undefined
+  }
+  const clean = (v?: string): string | undefined => {
+    const s = (v ?? '').trim()
+    return !s || /^test$/i.test(s) ? undefined : s
+  }
+  return { tell: clean(get('tell')), id: clean(get('id')), sessionId: clean(get('sessionid')) }
+}
+
 /**
  * Извлечь телефон из строки отчёта:
  * 1. Колонка "Телефон" (CATI)
  * 2. Колонка "ID" если похожа на номер (CAWI)
  * 3. Параметр Tell= из "Ссылка на заполнение" (CAWI)
+ * 4. Параметр ID= из ссылки, если это номер из 10-12 цифр (дозвонщик Oki-Toki, новые волны)
  */
-function extractPhone(row: any[], idxPhone: number, idxId: number, idxLink: number): string {
+function extractPhone(row: any[], idxPhone: number, idxId: number, link: FillLink): string {
   if (idxPhone >= 0 && row[idxPhone]) return String(row[idxPhone])
 
   if (idxId >= 0 && row[idxId]) {
@@ -250,9 +280,14 @@ function extractPhone(row: any[], idxPhone: number, idxId: number, idxLink: numb
     if (val.length >= 10 && val.length <= 12) return val
   }
 
-  if (idxLink >= 0 && row[idxLink]) {
-    const m = String(row[idxLink]).match(/Tell=(\d+)/)
-    if (m) return m[1]
+  if (link.tell) {
+    const d = link.tell.replace(/\D/g, '')
+    if (d) return d
+  }
+
+  if (link.id) {
+    const d = link.id.replace(/\D/g, '')
+    if (d.length >= 10 && d.length <= 12) return d
   }
 
   return ''
