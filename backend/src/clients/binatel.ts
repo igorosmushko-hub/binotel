@@ -238,7 +238,10 @@ function parseCallStart(c: SevenLineCall): string {
   const raw = String(c.startTime ?? '')
   const m = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/)
   if (m) {
-    const d = new Date(`${m[1]}T${m[2]}${config.simpleforms.timezoneOffset}`)
+    // Пояс из конфига берём, только если он в формате +05:00; иначе — Казахстан (+05:00).
+    const cfg = String(config.simpleforms.timezoneOffset ?? '').trim()
+    const offset = /^[+-]\d{2}:\d{2}$/.test(cfg) ? cfg : '+05:00'
+    const d = new Date(`${m[1]}T${m[2]}${offset}`)
     if (Number.isFinite(d.getTime())) return d.toISOString()
   }
   return String(c.date ?? c.callDate ?? c.created_at ?? '')
