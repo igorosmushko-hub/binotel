@@ -53,7 +53,18 @@ export function createRecordingsArchive(
       const results = await Promise.all(batch.map(async record => {
         for (let attempt = 0; attempt < DOWNLOAD_RETRIES; attempt++) {
           try {
-            const audioStream = await binatelClient.downloadRecording(record.phone)
+            // Сначала запись конкретного звонка; для анкет, найденных по телефону, при неудаче —
+            // запись самого свежего звонка на этот номер (старое поведение).
+            let audioStream: Readable
+            try {
+              audioStream = await binatelClient.downloadRecordingByCallId(record.callId!)
+            } catch (err) {
+              if (record.matchedBy === 'phone' && record.phone) {
+                audioStream = await binatelClient.downloadRecording(record.phone)
+              } else {
+                throw err
+              }
+            }
             return { record, buf: await streamToBuffer(audioStream) }
           } catch (err) {
             if (attempt < DOWNLOAD_RETRIES - 1) {
